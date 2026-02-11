@@ -1,20 +1,23 @@
 /**
  * Xona Agent — Main Entry Point
  * 
- * Autonomous creative AI agent on Solana for the Colosseum Agent Hackathon.
+ * Autonomous creative AI agent on Solana.
  * 
  * What it does:
  * 1. Registers with Colosseum hackathon (heartbeat, project, forum intro)
- * 2. Starts Express API server (free image/video generation + PumpFun intelligence)
- * 3. Starts autonomous cron that posts to the Colosseum forum:
+ * 2. Registers with Superteam Earn (listing discovery, auto-submissions)
+ * 3. Starts Express API server (free image/video generation + PumpFun intelligence)
+ * 4. Starts autonomous cron that posts to the Colosseum forum:
  *    - X News from 5 accounts (4x/day)
  *    - AI Image Showcase with rotating models (2x/day)
  *    - PumpFun trending/movers intel (2x/day)
+ * 5. Starts Superteam Earn listing scanner (every 2 hours)
  */
 require('dotenv').config();
 
 const { createServer } = require('./server');
 const { ColosseumAgent } = require('./agent/colosseum');
+const { SuperteamEarnAgent } = require('./agent/superteam');
 const { startCron, stopCron } = require('./services/daily-news');
 
 const PORT = process.env.PORT || 3002;
@@ -30,12 +33,12 @@ async function main() {
   // 1. Initialize Colosseum Agent
   // ==========================================
   const colosseum = new ColosseumAgent();
-  let agentReady = false;
+  let colosseumReady = false;
 
   if (process.env.COLOSSEUM_API_KEY) {
     try {
       await colosseum.run();
-      agentReady = true;
+      colosseumReady = true;
     } catch (error) {
       console.error('⚠️  Colosseum agent error:', error.message);
       console.log('   Agent will continue running with API server. Forum posting may be limited.');
@@ -49,9 +52,33 @@ async function main() {
   }
 
   // ==========================================
-  // 2. Start Express API Server (pass agent for live triggers)
+  // 2. Initialize Superteam Earn Agent
   // ==========================================
-  const app = createServer(agentReady ? colosseum : null);
+  const superteam = new SuperteamEarnAgent();
+  let superteamReady = false;
+
+  if (process.env.SUPERTEAM_API_KEY) {
+    try {
+      await superteam.run();
+      superteamReady = true;
+    } catch (error) {
+      console.error('⚠️  Superteam Earn agent error:', error.message);
+      console.log('   Agent will continue running. Superteam listing submissions will be disabled.');
+    }
+  } else {
+    console.log('');
+    console.log('ℹ️  SUPERTEAM_API_KEY not set. Run `npm run register:superteam` to register.');
+    console.log('   Superteam Earn listing discovery and auto-submissions will be disabled.');
+    console.log('');
+  }
+
+  // ==========================================
+  // 3. Start Express API Server (pass agents for live triggers)
+  // ==========================================
+  const app = createServer(
+    colosseumReady ? colosseum : null,
+    superteamReady ? superteam : null
+  );
 
   const server = app.listen(PORT, () => {
     console.log(`🌐 API Server running on port ${PORT}`);
@@ -74,15 +101,20 @@ async function main() {
     console.log(`   - POST http://localhost:${PORT}/trigger/image-showcase`);
     console.log(`   - POST http://localhost:${PORT}/trigger/pumpfun`);
     console.log('');
+    console.log('   Superteam Earn Endpoints:');
+    console.log(`   - GET  http://localhost:${PORT}/superteam/heartbeat`);
+    console.log(`   - GET  http://localhost:${PORT}/superteam/listings`);
+    console.log(`   - POST http://localhost:${PORT}/superteam/scan`);
+    console.log('');
   });
 
   // ==========================================
-  // 3. Start Autonomous Forum Posting Cron
+  // 4. Start Autonomous Forum Posting Cron
   // ==========================================
   try {
-    if (agentReady && process.env.XAI_API_KEY) {
-      startCron(colosseum);
-    } else if (!agentReady) {
+    if (colosseumReady && process.env.XAI_API_KEY) {
+      startCron(colosseum, superteamReady ? superteam : null);
+    } else if (!colosseumReady) {
       console.log('⏭️  Autonomous forum posting skipped (COLOSSEUM_API_KEY not set)');
       console.log('   Preview endpoints still available: GET /test/x-news, /test/image-showcase, /test/pumpfun');
     } else if (!process.env.XAI_API_KEY) {
@@ -98,6 +130,7 @@ async function main() {
   const shutdown = () => {
     console.log('\n🛑 Shutting down Xona Agent...');
     colosseum.stopHeartbeat();
+    superteam.stopScanner();
     stopCron();
     server.close(() => {
       console.log('👋 Goodbye!');

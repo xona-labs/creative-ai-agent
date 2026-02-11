@@ -43,8 +43,9 @@ let xNewsIndex = 0;
 let modelIndex = 0;
 let pumpfunType = 'trending'; // alternates between 'trending' and 'movers'
 
-/** Agent reference for forum posting */
+/** Agent references for forum posting / Superteam Earn */
 let _agent = null;
+let _superteamAgent = null;
 
 /** Recent news URLs to avoid duplicate posts */
 const recentNewsUrls = [];
@@ -536,10 +537,12 @@ let pumpfunCron = null;
 /**
  * Start all autonomous forum posting cron jobs
  * @param {Object} agent - ColosseumAgent instance
+ * @param {Object} [superteamAgent] - SuperteamEarnAgent instance (optional)
  */
-function startCron(agent) {
+function startCron(agent, superteamAgent = null) {
   stopCron();
   _agent = agent;
+  _superteamAgent = superteamAgent;
 
   console.log('[Cron] Starting autonomous forum posting cron jobs...');
 

@@ -1,12 +1,15 @@
 {
   "name": "xona-agent",
   "version": "1.0.0",
-  "description": "Xona Agent — Autonomous creative AI agent on Solana for the Colosseum Agent Hackathon",
+  "description": "Xona Agent — Autonomous creative AI agent on Solana (Colosseum + Superteam Earn)",
   "main": "index.js",
   "scripts": {
     "start": "node index.js",
     "dev": "nodemon index.js",
-    "register": "node scripts/register.js"
+    "register": "node scripts/register.js",
+    "register:superteam": "node scripts/register-superteam.js",
+    "submit:radar": "node scripts/submit-radar.js",
+    "submit:radar:dry": "node scripts/submit-radar.js --dry-run"
   },
   "keywords": [
     "solana",
@@ -14,6 +17,7 @@
     "ai",
     "x402",
     "colosseum",
+    "superteam",
     "hackathon"
   ],
   "author": "Xona Labs",

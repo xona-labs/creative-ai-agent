@@ -2,9 +2,9 @@
  * Xona Agent — Express API Server
  * Free endpoints for AI image/video generation, PumpFun intelligence, and trending analysis
  * + Test/trigger endpoints for autonomous forum posting pipelines
+ * + Superteam Earn heartbeat, listing discovery, and submission triggers
  * 
  * All endpoints are free — no auth, no payment.
- * Built for the Colosseum Agent Hackathon.
  */
 const express = require('express');
 const cors = require('cors');
@@ -24,8 +24,9 @@ const {
 /**
  * Create the Express server
  * @param {Object} [agent] - ColosseumAgent instance (for live forum triggers)
+ * @param {Object} [superteamAgent] - SuperteamEarnAgent instance (for Superteam Earn operations)
  */
-function createServer(agent = null) {
+function createServer(agent = null, superteamAgent = null) {
   const app = express();
 
   // Middleware
@@ -40,9 +41,12 @@ function createServer(agent = null) {
   app.get('/', (req, res) => {
     res.json({
       name: 'Xona Agent',
-      version: '1.0.0',
-      description: 'Creative AI agent on Solana — Free image/video generation, PumpFun intelligence, autonomous Colosseum forum posting',
-      hackathon: 'Colosseum Agent Hackathon',
+      version: '1.1.0',
+      description: 'Creative AI agent on Solana — Free image/video generation, PumpFun intelligence, autonomous forum posting & Superteam Earn bounty hunting',
+      platforms: {
+        colosseum: agent ? 'connected' : 'not configured',
+        superteam_earn: superteamAgent ? 'connected' : 'not configured',
+      },
       endpoints: {
         'POST /generate-image': 'Generate AI images (nano-banana, seedream, grok-imagine)',
         'POST /generate-video': 'Generate 10-second AI videos (Grok Video)',
@@ -57,12 +61,16 @@ function createServer(agent = null) {
         'POST /trigger/x-news': 'Live trigger X News → post to Colosseum forum',
         'POST /trigger/image-showcase': 'Live trigger Image Showcase → post to Colosseum forum',
         'POST /trigger/pumpfun': 'Live trigger PumpFun Intel → post to Colosseum forum',
+        'GET /superteam/heartbeat': 'Superteam Earn agent heartbeat (JSON)',
+        'GET /superteam/listings': 'Browse agent-eligible Superteam Earn listings',
+        'POST /superteam/scan': 'Trigger listing scan & auto-submit',
         'GET /health': 'Health check'
       },
       autonomous_schedule: {
         'X News': '02:00, 08:00, 14:00, 20:00 UTC — rotating: ' + X_NEWS_ACCOUNTS.join(', '),
         'Image Showcase': '05:00, 17:00 UTC — rotating: ' + IMAGE_MODELS.join(', '),
-        'PumpFun Intel': '03:00, 15:00 UTC — alternating: trending / movers'
+        'PumpFun Intel': '03:00, 15:00 UTC — alternating: trending / movers',
+        'Superteam Scan': 'Every 2 hours — auto-submit to relevant bounties'
       },
       free: true,
       repo: process.env.COLOSSEUM_REPO_LINK || 'https://github.com/xona-labs/creative-ai-agent'
@@ -74,7 +82,8 @@ function createServer(agent = null) {
       status: 'ok',
       timestamp: new Date().toISOString(),
       uptime: process.uptime(),
-      colosseumAgent: agent ? 'connected' : 'not configured'
+      colosseumAgent: agent ? 'connected' : 'not configured',
+      superteamAgent: superteamAgent ? 'connected' : 'not configured',
     });
   });
 
@@ -393,6 +402,129 @@ Return JSON array:
       return res.json(result);
     } catch (error) {
       console.error('[Trigger] PumpFun error:', error.message);
+      return res.status(500).json({ success: false, message: error.message });
+    }
+  });
+
+  // ==========================================
+  // Superteam Earn Endpoints
+  // ==========================================
+
+  /**
+   * GET /superteam/heartbeat
+   * Returns heartbeat JSON per https://superteam.fun/heartbeat.md spec
+   */
+  app.get('/superteam/heartbeat', (req, res) => {
+    if (!superteamAgent) {
+      return res.json({
+        status: 'blocked',
+        agentName: process.env.SUPERTEAM_AGENT_NAME || 'xona-agent',
+        time: new Date().toISOString(),
+        version: 'earn-agent-mvp',
+        capabilities: [],
+        lastAction: 'SUPERTEAM_API_KEY not configured',
+        nextAction: 'waiting for registration',
+      });
+    }
+    return res.json(superteamAgent.getHeartbeat());
+  });
+
+  /**
+   * GET /superteam/listings?take=20&deadline=2026-12-31
+   * Browse agent-eligible listings
+   */
+  app.get('/superteam/listings', async (req, res) => {
+    if (!superteamAgent) {
+      return res.status(503).json({
+        success: false,
+        message: 'Superteam Earn agent not configured. Set SUPERTEAM_API_KEY to enable.',
+      });
+    }
+    try {
+      const take = parseInt(req.query.take) || 20;
+      const deadline = req.query.deadline || undefined;
+      const data = await superteamAgent.discoverListings({ take, deadline });
+      return res.json({ success: true, ...data });
+    } catch (error) {
+      console.error('[Superteam API] Listings error:', error.message);
+      return res.status(500).json({ success: false, message: error.message });
+    }
+  });
+
+  /**
+   * POST /superteam/scan
+   * Trigger an immediate listing scan & auto-submit
+   */
+  app.post('/superteam/scan', async (req, res) => {
+    if (!superteamAgent) {
+      return res.status(503).json({
+        success: false,
+        message: 'Superteam Earn agent not configured. Set SUPERTEAM_API_KEY to enable.',
+      });
+    }
+    try {
+      console.log('[Superteam API] Manual scan triggered');
+      const result = await superteamAgent.scanAndSubmit();
+      return res.json({ success: true, ...result });
+    } catch (error) {
+      console.error('[Superteam API] Scan error:', error.message);
+      return res.status(500).json({ success: false, message: error.message });
+    }
+  });
+
+  /**
+   * POST /superteam/submit
+   * Manually submit to a specific listing
+   * Body: { "listingId": "...", "link": "...", "otherInfo": "..." }
+   */
+  app.post('/superteam/submit', async (req, res) => {
+    if (!superteamAgent) {
+      return res.status(503).json({
+        success: false,
+        message: 'Superteam Earn agent not configured. Set SUPERTEAM_API_KEY to enable.',
+      });
+    }
+    try {
+      const { listingId, link, otherInfo, tweet, ask, telegram } = req.body;
+      if (!listingId) {
+        return res.status(400).json({ success: false, message: 'listingId is required' });
+      }
+      const result = await superteamAgent.submitWork({
+        listingId,
+        link: link || '',
+        otherInfo: otherInfo || '',
+        tweet: tweet || '',
+        ask: ask || null,
+        telegram: telegram || undefined,
+      });
+      return res.json({ success: !!result, submission: result });
+    } catch (error) {
+      console.error('[Superteam API] Submit error:', error.message);
+      return res.status(500).json({ success: false, message: error.message });
+    }
+  });
+
+  /**
+   * POST /superteam/comment
+   * Post a comment on a listing
+   * Body: { "refId": "...", "message": "..." }
+   */
+  app.post('/superteam/comment', async (req, res) => {
+    if (!superteamAgent) {
+      return res.status(503).json({
+        success: false,
+        message: 'Superteam Earn agent not configured. Set SUPERTEAM_API_KEY to enable.',
+      });
+    }
+    try {
+      const { refId, message, pocId, refType } = req.body;
+      if (!refId || !message) {
+        return res.status(400).json({ success: false, message: 'refId and message are required' });
+      }
+      const result = await superteamAgent.postComment({ refId, message, pocId, refType });
+      return res.json({ success: !!result, comment: result });
+    } catch (error) {
+      console.error('[Superteam API] Comment error:', error.message);
       return res.status(500).json({ success: false, message: error.message });
     }
   });
